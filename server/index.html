@@ -27,8 +27,9 @@
     <div class="flex flex-col w-85ch h-full justify-center gap-2">
         <h1 class="text-center text-lg font-light">Image/Manga Translator</h1>
         <div class="flex mx-4 justify-start items-end">
-            <div class="flex gap-4">
-                <div class="flex items-center" title="Detection resolution">
+            <div class="flex flex-wrap gap-4">
+                <!-- 文本检测设置 -->
+                <div class="flex items-center" title="检测分辨率">
                     <i class="iconify" data-icon="carbon:fit-to-screen"></i>
                     <div class="relative">
                         <select class="w-9ch appearance-none bg-transparent border-b border-gray-300"
@@ -42,33 +43,279 @@
                            data-icon="carbon:chevron-down"></i>
                     </div>
                 </div>
-                <div class="flex items-center gap-1" title="Text detector">
+                <div class="flex items-center gap-1" title="文本检测器">
                     <i class="iconify" data-icon="carbon:search-locate"></i>
                     <div class="relative">
                         <select class="w-9ch appearance-none bg-transparent border-b border-gray-300"
                                 v-model="textDetector">
-                            <option value="default">Default</option>
+                            <option value="default">默认</option>
+                            <option value="dbconvnext">DBConvNext</option>
                             <option value="ctd">CTD</option>
+                            <option value="craft">CRAFT</option>
                             <option value="paddle">Paddle</option>
+                            <option value="none">无</option>
                         </select>
                         <i class="iconify absolute top-1.5 right-1 pointer-events-none"
                            data-icon="carbon:chevron-down"></i>
                     </div>
                 </div>
-                <div class="flex items-center gap-1" title="Render text orientation">
+                
+                <div class="flex items-center gap-1" title="文本阈值">
+                    <i class="iconify" data-icon="carbon:function-math"></i>
+                    <span class="mr-1">文本阈值</span>
+                    <input type="number" class="w-12ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="textThreshold" min="0" max="1" step="0.05">
+                </div>
+                
+                <div class="flex items-center gap-1" title="边框阈值">
+                    <i class="iconify" data-icon="carbon:border-full"></i>
+                    <span class="mr-1">边框阈值</span>
+                    <input type="number" class="w-12ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="boxThreshold" min="0" max="1" step="0.05">
+                </div>
+                
+                <div class="flex items-center gap-1" title="展开比例">
+                    <i class="iconify" data-icon="carbon:expand-categories"></i>
+                    <span class="mr-1">展开比例</span>
+                    <input type="number" class="w-12ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="unclipRatio" min="1" max="5" step="0.1">
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <label class="flex items-center gap-1" title="旋转检测">
+                        <input type="checkbox" v-model="detRotate" class="w-4 h-4">
+                        <span>旋转检测</span>
+                    </label>
+                    
+                    <label class="flex items-center gap-1" title="自动旋转">
+                        <input type="checkbox" v-model="detAutoRotate" class="w-4 h-4">
+                        <span>自动旋转</span>
+                    </label>
+                    
+                    <label class="flex items-center gap-1" title="颜色反转">
+                        <input type="checkbox" v-model="detInvert" class="w-4 h-4">
+                        <span>颜色反转</span>
+                    </label>
+                    
+                    <label class="flex items-center gap-1" title="伽马校正">
+                        <input type="checkbox" v-model="detGammaCorrect" class="w-4 h-4">
+                        <span>伽马校正</span>
+                    </label>
+                </div>
+                
+                <!-- 渲染设置 -->
+                <div class="flex items-center gap-1" title="渲染器">
+                    <i class="iconify" data-icon="carbon:pen"></i>
+                    <div class="relative">
+                        <select class="w-12ch appearance-none bg-transparent border-b border-gray-300"
+                                v-model="renderer">
+                            <option value="default">默认</option>
+                            <option value="cairo">Cairo</option>
+                            <option value="gimp">GIMP</option>
+                            <option value="original">原始</option>
+                        </select>
+                        <i class="iconify absolute top-1.5 right-1 pointer-events-none"
+                           data-icon="carbon:chevron-down"></i>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-1" title="文本对齐">
+                    <i class="iconify" data-icon="carbon:text-align-mixed"></i>
+                    <div class="relative">
+                        <select class="w-12ch appearance-none bg-transparent border-b border-gray-300"
+                                v-model="textAlignment">
+                            <option value="auto">自动</option>
+                            <option value="left">左对齐</option>
+                            <option value="center">居中</option>
+                            <option value="right">右对齐</option>
+                        </select>
+                        <i class="iconify absolute top-1.5 right-1 pointer-events-none"
+                           data-icon="carbon:chevron-down"></i>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-1" title="渲染文本方向">
                     <i class="iconify" data-icon="carbon:text-align-left"></i>
                     <div class="relative">
                         <select class="w-12ch appearance-none bg-transparent border-b border-gray-300"
                                 v-model="renderTextDirection">
-                            <option value="auto">Auto</option>
-                            <option value="horizontal">Horizontal</option>
-                            <option value="vertical">Vertical</option>
+                            <option value="auto">自动</option>
+                            <option value="horizontal">水平</option>
+                            <option value="vertical">垂直</option>
                         </select>
                         <i class="iconify absolute top-1.5 right-1 pointer-events-none"
                            data-icon="carbon:chevron-down"></i>
                     </div>
                 </div>
-                <div class="flex items-center gap-1" title="Translator">
+                
+                <div class="flex items-center gap-1" title="字体大小偏移">
+                    <i class="iconify" data-icon="carbon:text-font"></i>
+                    <span class="mr-1">字体偏移</span>
+                    <input type="number" class="w-12ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="fontSizeOffset" min="-10" max="10">
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <label class="flex items-center gap-1" title="禁用字体边框">
+                        <input type="checkbox" v-model="disableFontBorder" class="w-4 h-4">
+                        <span>禁用字体边框</span>
+                    </label>
+                    
+                    <label class="flex items-center gap-1" title="全大写">
+                        <input type="checkbox" v-model="textUppercase" class="w-4 h-4">
+                        <span>全大写</span>
+                    </label>
+                    
+                    <label class="flex items-center gap-1" title="全小写">
+                        <input type="checkbox" v-model="textLowercase" class="w-4 h-4">
+                        <span>全小写</span>
+                    </label>
+                    
+                    <label class="flex items-center gap-1" title="禁用连字符">
+                        <input type="checkbox" v-model="noHyphenation" class="w-4 h-4">
+                        <span>禁用连字符</span>
+                    </label>
+                </div>
+                
+                <!-- 上采样设置 -->
+                <div class="flex items-center gap-1" title="上采样器">
+                    <i class="iconify" data-icon="carbon:image-service"></i>
+                    <div class="relative">
+                        <select class="w-12ch appearance-none bg-transparent border-b border-gray-300"
+                                v-model="upscaler">
+                            <option value="waifu2x">Waifu2x</option>
+                            <option value="esrgan">ESRGAN</option>
+                            <option value="4xultrasharp">4xUltraSharp</option>
+                        </select>
+                        <i class="iconify absolute top-1.5 right-1 pointer-events-none"
+                           data-icon="carbon:chevron-down"></i>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-1" title="上采样比例">
+                    <span class="mr-1">上采样比例</span>
+                    <input type="number" class="w-10ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="upscaleRatio" min="1" max="4" step="1">
+                </div>
+                
+                <label class="flex items-center gap-1" title="恢复原始尺寸">
+                    <input type="checkbox" v-model="revertUpscaling" class="w-4 h-4">
+                    <span>恢复原始尺寸</span>
+                </label>
+                
+                <!-- 着色器设置 -->
+                <div class="flex items-center gap-1" title="着色器">
+                    <i class="iconify" data-icon="carbon:color-palette"></i>
+                    <div class="relative">
+                        <select class="w-10ch appearance-none bg-transparent border-b border-gray-300"
+                                v-model="colorizer">
+                            <option value="none">无</option>
+                            <option value="mc2">MC2</option>
+                        </select>
+                        <i class="iconify absolute top-1.5 right-1 pointer-events-none"
+                           data-icon="carbon:chevron-down"></i>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-1" title="着色尺寸">
+                    <span class="mr-1">着色尺寸</span>
+                    <input type="number" class="w-10ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="colorizationSize" min="256" max="1024" step="32">
+                </div>
+                
+                <div class="flex items-center gap-1" title="降噪系数">
+                    <span class="mr-1">降噪系数</span>
+                    <input type="number" class="w-10ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="denoiseSigma" min="0" max="100">
+                </div>
+                
+                <!-- 修复器设置 -->
+                <div class="flex items-center gap-1" title="修复器">
+                    <i class="iconify" data-icon="carbon:paint-brush"></i>
+                    <div class="relative">
+                        <select class="w-12ch appearance-none bg-transparent border-b border-gray-300"
+                                v-model="inpainter">
+                            <option value="none">无</option>
+                            <option value="default">默认</option>
+                            <option value="lama_large">Lama大型</option>
+                            <option value="lama_mpe">Lama MPE</option>
+                            <option value="sd">SD</option>
+                            <option value="original">原始</option>
+                        </select>
+                        <i class="iconify absolute top-1.5 right-1 pointer-events-none"
+                           data-icon="carbon:chevron-down"></i>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-1" title="修复尺寸">
+                    <span class="mr-1">修复尺寸</span>
+                    <input type="number" class="w-12ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="inpaintingSize" min="512" max="4096" step="256">
+                </div>
+                
+                <div class="flex items-center gap-1" title="修复精度">
+                    <i class="iconify" data-icon="carbon:mathematical-statistics"></i>
+                    <div class="relative">
+                        <select class="w-8ch appearance-none bg-transparent border-b border-gray-300"
+                                v-model="inpaintingPrecision">
+                            <option value="fp32">FP32</option>
+                            <option value="fp16">FP16</option>
+                            <option value="bf16">BF16</option>
+                        </select>
+                        <i class="iconify absolute top-1.5 right-1 pointer-events-none"
+                           data-icon="carbon:chevron-down"></i>
+                    </div>
+                </div>
+                
+                <!-- OCR设置 -->
+                <div class="flex items-center gap-1" title="OCR模型">
+                    <i class="iconify" data-icon="carbon:text-recognition"></i>
+                    <div class="relative">
+                        <select class="w-10ch appearance-none bg-transparent border-b border-gray-300"
+                                v-model="ocrModel">
+                            <option value="32px">32px</option>
+                            <option value="48px">48px</option>
+                            <option value="48px_ctc">48px CTC</option>
+                            <option value="mocr">MOCR</option>
+                        </select>
+                        <i class="iconify absolute top-1.5 right-1 pointer-events-none"
+                           data-icon="carbon:chevron-down"></i>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-1" title="最小文本长度">
+                    <span class="mr-1">最小文本长度</span>
+                    <input type="number" class="w-10ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="minTextLength" min="0" max="10">
+                </div>
+                
+                <div class="flex items-center gap-1" title="忽略气泡">
+                    <span class="mr-1">忽略气泡</span>
+                    <input type="number" class="w-10ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="ignoreBubble" min="0" max="10">
+                </div>
+                
+                <label class="flex items-center gap-1" title="使用MOCR合并">
+                    <input type="checkbox" v-model="useMocrMerge" class="w-4 h-4">
+                    <span>使用MOCR合并</span>
+                </label>
+                
+                <!-- 其他设置 -->
+                <div class="flex items-center gap-1" title="核心大小">
+                    <i class="iconify" data-icon="carbon:filter"></i>
+                    <span class="mr-1">核心大小</span>
+                    <input type="number" class="w-10ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="kernelSize" min="1" max="10">
+                </div>
+                
+                <div class="flex items-center gap-1" title="掩码扩张偏移">
+                    <span class="mr-1">掩码扩张偏移</span>
+                    <input type="number" class="w-10ch appearance-none bg-transparent border-b border-gray-300"
+                           v-model="maskDilationOffset" min="-5" max="5">
+                </div>
+                
+                <!-- 翻译设置 -->
+                <div class="flex items-center gap-1" title="翻译器">
                     <i class="iconify" data-icon="carbon:operations-record"></i>
                     <div class="relative">
                         <select class="w-9ch appearance-none bg-transparent border-b border-gray-300"
@@ -79,7 +326,8 @@
                            data-icon="carbon:chevron-down"></i>
                     </div>
                 </div>
-                <div class="flex items-center gap-1" title="Target language">
+                
+                <div class="flex items-center gap-1" title="目标语言">
                     <i class="iconify" data-icon="carbon:language"></i>
                     <div class="relative">
                         <select class="w-15ch appearance-none bg-transparent border-b border-gray-300"
@@ -202,7 +450,43 @@
         },
         detectionResolution: '1536',
         textDetector: 'default',
+        textThreshold: 0.5,
+        boxThreshold: 0.7,
+        unclipRatio: 2.3,
+        detRotate: false,
+        detAutoRotate: false,
+        detInvert: false,
+        detGammaCorrect: false,
+        
+        renderer: 'default',
+        textAlignment: 'auto',
         renderTextDirection: 'auto',
+        fontSizeOffset: 0,
+        disableFontBorder: false,
+        textUppercase: false,
+        textLowercase: false,
+        noHyphenation: false,
+        
+        upscaler: 'esrgan',
+        upscaleRatio: null,
+        revertUpscaling: false,
+        
+        colorizer: 'none',
+        colorizationSize: 576,
+        denoiseSigma: 30,
+        
+        inpainter: 'none',
+        inpaintingSize: 2048,
+        inpaintingPrecision: 'fp32',
+        
+        ocrModel: '48px',
+        minTextLength: 0,
+        ignoreBubble: 0,
+        useMocrMerge: false,
+        
+        kernelSize: 3,
+        maskDilationOffset: 0,
+        
         translator: 'youdao',
         validTranslators: ['youdao', 'baidu', 'deepl', 'papago', 'caiyun', 'sakura', 'offline', 'gpt3.5', 'deepseek', 'none'],
         getTranslatorName(key) {
@@ -311,20 +595,56 @@
             const config = `{
                 "detector": {
                     "detector": "${this.textDetector}",
-                    "detection_size": ${this.detectionResolution}
+                    "detection_size": ${this.detectionResolution},
+                    "text_threshold": ${this.textThreshold},
+                    "box_threshold": ${this.boxThreshold},
+                    "unclip_ratio": ${this.unclipRatio},
+                    "det_rotate": ${this.detRotate},
+                    "det_auto_rotate": ${this.detAutoRotate},
+                    "det_invert": ${this.detInvert},
+                    "det_gamma_correct": ${this.detGammaCorrect}
                 },
                 "render": {
-                    "direction": "${this.renderTextDirection}"
+                    "renderer": "${this.renderer}",
+                    "alignment": "${this.textAlignment}",
+                    "disable_font_border": ${this.disableFontBorder},
+                    "font_size_offset": ${this.fontSizeOffset},
+                    "direction": "${this.renderTextDirection}",
+                    "uppercase": ${this.textUppercase},
+                    "lowercase": ${this.textLowercase},
+                    "no_hyphenation": ${this.noHyphenation}
+                },
+                "upscale": {
+                    "upscaler": "${this.upscaler}",
+                    "revert_upscaling": ${this.revertUpscaling},
+                    "upscale_ratio": ${this.upscaleRatio === null ? 'null' : this.upscaleRatio}
                 },
                 "translator": {
                     "translator": "${this.translator}",
                     "target_lang": "${this.targetLanguage}"
-                }
+                },
+                "colorizer": {
+                    "colorizer": "${this.colorizer}",
+                    "colorization_size": ${this.colorizationSize},
+                    "denoise_sigma": ${this.denoiseSigma}
+                },
+                "inpainter": {
+                    "inpainter": "${this.inpainter}",
+                    "inpainting_size": ${this.inpaintingSize},
+                    "inpainting_precision": "${this.inpaintingPrecision}"
+                },
+                "ocr": {
+                    "ocr": "${this.ocrModel}",
+                    "min_text_length": ${this.minTextLength},
+                    "ignore_bubble": ${this.ignoreBubble},
+                    "use_mocr_merge": ${this.useMocrMerge}
+                },
+                "kernel_size": ${this.kernelSize},
+                "mask_dilation_offset": ${this.maskDilationOffset}
             }`;
 
             formData.append('config', config)
-
-
+            
             const processChunk = (value) => {
                 if (this.error) return;
 
