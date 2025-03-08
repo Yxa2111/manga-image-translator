@@ -57,3 +57,5 @@ python-multipart
 paddleocr
 paddlepaddle; sys_platform == 'darwin'
 paddlepaddle-gpu; sys_platform != 'darwin'
+torchmetrics==0.11.4
+pytorch_lightning==1.7.7

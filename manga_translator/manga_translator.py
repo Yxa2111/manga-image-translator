@@ -189,6 +189,182 @@ class MangaTranslator:
 
         # translate
         return await self._translate(config, ctx)
+    
+
+    async def translate_ocr(self, image: Image.Image, config: Config) -> Context:
+        """
+        Translates a PIL image from a manga. Returns dict with result and intermediates of translation.
+        Default params are taken from args.py.
+
+        ```py
+        translation_dict = await translator.translate(image)
+        result = translation_dict.result
+        ```
+        """
+        # TODO: Take list of images to speed up batch processing
+
+        ctx = Context()
+
+        ctx.input = image
+        ctx.result = None
+
+        # preload and download models (not strictly necessary, remove to lazy load)
+        if ( self.models_ttl == 0 ):
+            logger.info('Loading models')
+            if config.upscale.upscale_ratio:
+                await prepare_upscaling(config.upscale.upscaler)
+            await prepare_detection(config.detector.detector)
+            await prepare_ocr(config.ocr.ocr, self.device)
+            # await prepare_inpainting(config.inpainter.inpainter, self.device)
+            # await prepare_translation(config.translator.translator_gen)
+            # if config.colorizer.colorizer != Colorizer.none:
+            #     await prepare_colorization(config.colorizer.colorizer)
+
+        # translate
+        return await self._translate_ocr(config, ctx)
+
+    async def _translate_ocr(self, config: Config, ctx: Context) -> Context:
+        # Start the background cleanup job once if not already started.
+        if self._detector_cleanup_task is None:
+            self._detector_cleanup_task = asyncio.create_task(self._detector_cleanup_job())
+        # -- Colorization
+        if config.colorizer.colorizer != Colorizer.none:
+            await self._report_progress('colorizing')
+            ctx.img_colorized = await self._run_colorizer(config, ctx)
+        else:
+            ctx.img_colorized = ctx.input
+
+        # -- Upscaling
+        # The default text detector doesn't work very well on smaller images, might want to
+        # consider adding automatic upscaling on certain kinds of small images.
+        if config.upscale.upscale_ratio:
+            await self._report_progress('upscaling')
+            ctx.upscaled = await self._run_upscaling(config, ctx)
+        else:
+            ctx.upscaled = ctx.img_colorized
+
+        ctx.img_rgb, ctx.img_alpha = load_image(ctx.upscaled)
+
+        # -- Detection
+        await self._report_progress('detection')
+        ctx.textlines, ctx.mask_raw, ctx.mask = await self._run_detection(config, ctx)
+        if self.verbose:
+            cv2.imwrite(self._result_path('mask_raw.png'), ctx.mask_raw)
+
+        if not ctx.textlines:
+            await self._report_progress('skip-no-regions', True)
+            # If no text was found result is intermediate image product
+            ctx.result = ctx.upscaled
+            return await self._revert_upscale(config, ctx)
+
+        if self.verbose:
+            img_bbox_raw = np.copy(ctx.img_rgb)
+            for txtln in ctx.textlines:
+                cv2.polylines(img_bbox_raw, [txtln.pts], True, color=(255, 0, 0), thickness=2)
+            cv2.imwrite(self._result_path('bboxes_unfiltered.png'), cv2.cvtColor(img_bbox_raw, cv2.COLOR_RGB2BGR))
+
+        # -- OCR
+        await self._report_progress('ocr')
+        ctx.textlines = await self._run_ocr(config, ctx)
+
+        if not ctx.textlines:
+            await self._report_progress('skip-no-text', True)
+            # If no text was found result is intermediate image product
+            ctx.result = ctx.upscaled
+            return await self._revert_upscale(config, ctx)
+
+        # Apply pre-dictionary after OCR
+        pre_dict = load_dictionary(self.pre_dict)
+        pre_replacements = []  
+        for textline in ctx.textlines:  
+            original = textline.text  
+            textline.text = apply_dictionary(textline.text, pre_dict)
+            if original != textline.text:  
+                pre_replacements.append(f"{original} => {textline.text}")  
+
+        if pre_replacements:  
+            logger.info("Pre-translation replacements:")  
+            for replacement in pre_replacements:  
+                logger.info(replacement)  
+        else:  
+            logger.info("No pre-translation replacements made.")
+        
+        # -- Textline merge
+        await self._report_progress('textline_merge')
+        ctx.text_regions = await self._run_textline_merge(config, ctx)
+
+        if self.verbose:
+            bboxes = visualize_textblocks(cv2.cvtColor(ctx.img_rgb, cv2.COLOR_BGR2RGB), ctx.text_regions)
+            cv2.imwrite(self._result_path('bboxes.png'), bboxes)
+        
+        return ctx
+
+    async def translate_ctx(self, config: Config, ctx: Context) -> Context:
+        # preload and download models (not strictly necessary, remove to lazy load)
+        if ( self.models_ttl == 0 ):
+            logger.info('Loading models')
+            await prepare_inpainting(config.inpainter.inpainter, self.device)
+            await prepare_translation(config.translator.translator_gen)
+            if config.colorizer.colorizer != Colorizer.none:
+                await prepare_colorization(config.colorizer.colorizer)
+
+        # translate
+        return await self._translate_ctx(config, ctx)
+
+    async def _translate_ctx(self, config: Config, ctx: Context) -> Context:
+        # -- Translation
+        await self._report_progress('translating')
+        ctx.text_regions = await self._run_text_translation(config, ctx)
+        await self._report_progress('after-translating')
+
+        if not ctx.text_regions:
+            await self._report_progress('error-translating', True)
+            ctx.result = ctx.upscaled
+            return await self._revert_upscale(config, ctx)
+        elif ctx.text_regions == 'cancel':
+            await self._report_progress('cancelled', True)
+            ctx.result = ctx.upscaled
+            return await self._revert_upscale(config, ctx)
+
+        # -- Mask refinement
+        # (Delayed to take advantage of the region filtering done after ocr and translation)
+        if ctx.mask is None:
+            await self._report_progress('mask-generation')
+            ctx.mask = await self._run_mask_refinement(config, ctx)
+
+        if self.verbose:
+            inpaint_input_img = await dispatch_inpainting(Inpainter.none, ctx.img_rgb, ctx.mask, config.inpainter,config.inpainter.inpainting_size,
+                                                          self.device, self.verbose)
+            cv2.imwrite(self._result_path('inpaint_input.png'), cv2.cvtColor(inpaint_input_img, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(self._result_path('mask_final.png'), ctx.mask)
+
+        # -- Inpainting
+        await self._report_progress('inpainting')
+        ctx.img_inpainted = await self._run_inpainting(config, ctx)
+        ctx.gimp_mask = np.dstack((cv2.cvtColor(ctx.img_inpainted, cv2.COLOR_RGB2BGR), ctx.mask))
+
+        if self.verbose:
+            cv2.imwrite(self._result_path('inpainted.png'), cv2.cvtColor(ctx.img_inpainted, cv2.COLOR_RGB2BGR))
+        # -- Rendering
+        await self._report_progress('rendering')
+        ctx.img_rendered = await self._run_text_rendering(config, ctx)
+        await self._report_progress('finished', True)
+        
+        if config.render.return_region_only is False:
+            ctx.result = dump_image(ctx.input, ctx.img_rendered, ctx.img_alpha)
+        else:
+            ctx.result = ctx.img_rendered
+            ctx.img_rendered = None
+            if self.verbose:
+                # 将每个区域的图片片段保存到result目录
+                for i, region_img in enumerate(ctx.result):
+                    if isinstance(region_img['image'], np.ndarray):
+                        cv2.imwrite(self._result_path(f'region_{i}.png'), cv2.cvtColor(region_img['image'], cv2.COLOR_RGB2BGR))
+
+            return ctx
+
+        return await self._revert_upscale(config, ctx).result
+
 
     async def _translate(self, config: Config, ctx: Context) -> Context:
         # Start the background cleanup job once if not already started.
@@ -724,7 +900,8 @@ class MangaTranslator:
         else:
             output = await dispatch_rendering(ctx.img_inpainted, ctx.text_regions, self.font_path, config.render.font_size,
                                               config.render.font_size_offset,
-                                              config.render.font_size_minimum, not config.render.no_hyphenation, ctx.render_mask, config.render.line_spacing)
+                                              config.render.font_size_minimum, not config.render.no_hyphenation, ctx.render_mask, config.render.line_spacing,
+                                              config.render.disable_font_border, config.render.return_region_only)
         return output
 
     def _result_path(self, path: str) -> str:

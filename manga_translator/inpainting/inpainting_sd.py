@@ -10,6 +10,7 @@ from omegaconf import OmegaConf
 
 from .common import OfflineInpainter
 from ..utils import resize_keep_aspect
+from ..config import InpainterConfig
 
 from .booru_tagger import Tagger
 from .sd_hack import hack_everything
@@ -50,9 +51,14 @@ class StableDiffusionInpainter(OfflineInpainter):
             'hash': 'dd680bd77d553e095faf58ff8c12584efe2a9b844e18bcc6ba2a366b85caceb8',
             'file': 'abyssorangemix2_Hard-inpainting.safetensors',
         },
+        # 'model_wd_swinv2': {
+        #     'url': 'https://huggingface.co/SmilingWolf/wd-v1-4-swinv2-tagger-v2/resolve/main/model.onnx',
+        #     'hash': '67740df7ede9a53e50d6e29c6a5c0d6c862f1876c22545d810515bad3ae17bb1',
+        #     'file': 'wd_swinv2.onnx',
+        # },
         'model_wd_swinv2': {
             'url': 'https://huggingface.co/SmilingWolf/wd-v1-4-swinv2-tagger-v2/resolve/main/model.onnx',
-            'hash': '67740df7ede9a53e50d6e29c6a5c0d6c862f1876c22545d810515bad3ae17bb1',
+            'hash': '04ec04fdf7db74b4fed7f4b52f52e04dec4dbad9e4d88d2d178f334079a29fde',
             'file': 'wd_swinv2.onnx',
         },
         'model_wd_swinv2_csv': {
@@ -79,7 +85,7 @@ class StableDiffusionInpainter(OfflineInpainter):
         del self.model
 
     @torch.no_grad()
-    async def _infer(self, image: np.ndarray, mask: np.ndarray, inpainting_size: int = 1024, verbose: bool = False) -> np.ndarray:
+    async def _infer(self, image: np.ndarray, mask: np.ndarray, config: InpainterConfig, inpainting_size: int = 1024, verbose: bool = False) -> np.ndarray:
         img_original = np.copy(image)
         mask_original = np.copy(mask)
         mask_original[mask_original < 127] = 0

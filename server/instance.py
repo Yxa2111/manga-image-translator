@@ -1,3 +1,5 @@
+from manga_translator.utils import Context
+
 from asyncio import Event, Lock
 from typing import List
 
@@ -5,7 +7,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 from manga_translator import Config
-from server.sent_data_internal import fetch_data_stream, NotifyType, fetch_data
+from server.sent_data_internal import fetch_data_stream, NotifyType, fetch_data, fetch_data_raw
 
 
 class ExecutorInstance(BaseModel):
@@ -21,6 +23,13 @@ class ExecutorInstance(BaseModel):
 
     async def sent_stream(self, image: Image, config: Config, sender: NotifyType):
         await fetch_data_stream("http://"+self.ip+":"+str(self.port)+"/execute/translate", image, config, sender)
+    
+    async def sent_ocr(self, image: Image, config: Config):
+        return await fetch_data("http://"+self.ip+":"+str(self.port)+"/simple_execute/translate_ocr", image, config)
+
+    async def sent_translate_ctx(self, config: Config, ctx: Context):
+        data = {"config": config, "ctx": ctx}
+        return await fetch_data_raw("http://"+self.ip+":"+str(self.port)+"/simple_execute/translate_ctx", data)
 
 class Executors:
     def __init__(self):

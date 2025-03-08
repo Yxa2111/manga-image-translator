@@ -1,5 +1,5 @@
 import pickle
-from typing import Mapping, Optional, Callable
+from typing import Mapping, Optional, Callable, Any
 
 import aiohttp
 from PIL.Image import Image
@@ -59,4 +59,22 @@ def extract_header(buffer):
     status = int.from_bytes(buffer[0:1], byteorder='big')
     expected_size = int.from_bytes(buffer[1:5], byteorder='big')
     return status, expected_size
+
+async def fetch_data_raw(url: str, data: Any, headers: Mapping[str, str] = {}):
+    """
+    发送任意数据到指定URL的通用函数
+    
+    Args:
+        url: 目标URL
+        data: 要发送的任意数据
+        headers: 可选的HTTP头部
+    """
+    pickled_data = pickle.dumps(data)
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, data=pickled_data, headers=headers) as response:
+            if response.status == 200:
+                return pickle.loads(await response.read())
+            else:
+                raise HTTPException(response.status, detail=response.text())
 

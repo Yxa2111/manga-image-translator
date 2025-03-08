@@ -1,7 +1,7 @@
 import os
 import cv2
 import numpy as np
-from typing import List
+from typing import List, Union, Dict, Any
 from shapely import affinity
 from shapely.geometry import Polygon
 from tqdm import tqdm
@@ -99,8 +99,9 @@ async def dispatch(
     hyphenate: bool = True,
     render_mask: np.ndarray = None,
     line_spacing: int = None,
-    disable_font_border: bool = False
-    ) -> np.ndarray:
+    disable_font_border: bool = False,
+    return_regions_only: bool = False
+    ) -> Union[np.ndarray, List[Dict[str, Any]]]:
 
     text_render.set_font(font_path)
     text_regions = list(filter(lambda region: region.translation, text_regions))
@@ -110,13 +111,41 @@ async def dispatch(
 
     # TODO: Maybe remove intersections
 
+    # Prepare a list to store region images if needed
+    rendered_regions = []
+    
+    # Create a copy of the original image if we only want to return regions
+    img_result = img.copy()
+    
     # Render text
     for region, dst_points in tqdm(zip(text_regions, dst_points_list), '[render]', total=len(text_regions)):
         if render_mask is not None:
             # set render_mask to 1 for the region that is inside dst_points
             cv2.fillConvexPoly(render_mask, dst_points.astype(np.int32), 1)
-        img = render(img, region, dst_points, hyphenate, line_spacing, disable_font_border)
-    return img
+        
+        # Get the bounding rectangle for this region
+        x, y, w, h = cv2.boundingRect(dst_points.astype(np.int32))
+        
+        # Render the text on the image
+        img_result = render(img_result, region, dst_points, hyphenate, line_spacing, disable_font_border)
+        
+        # If we need to return individual regions, store them
+        if return_regions_only:
+            # Extract the region from the rendered image
+            region_img = img_result[y:y+h, x:x+w].copy()
+            rendered_regions.append({
+                'image': region_img,
+                'position': (x, y),
+                'size': (w, h),
+                'points': dst_points,
+                'text': region.translation
+            })
+    
+    # Return either the full image or the list of rendered regions
+    if return_regions_only:
+        return rendered_regions
+    else:
+        return img_result
 
 def render(
     img,
