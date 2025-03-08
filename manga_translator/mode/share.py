@@ -82,7 +82,7 @@ class MangaShare:
                 raise HTTPException(401, detail="Nonce does not match")
 
     def check_lock(self):
-        if not self.lock.acquire(blocking=False):
+        if not self.lock.acquire(blocking=True):
             raise HTTPException(status_code=429, detail="some Method is already being executed.")
 
     def get_fn(self, method_name: str):

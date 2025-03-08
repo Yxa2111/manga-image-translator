@@ -313,6 +313,8 @@ class MangaTranslator:
 
     async def _translate_ctx(self, config: Config, ctx: Context) -> Context:
         # -- Translation
+        if ctx.text_regions is None:
+            ctx.text_regions = []
         await self._report_progress('translating')
         ctx.text_regions = await self._run_text_translation(config, ctx)
         await self._report_progress('after-translating')
