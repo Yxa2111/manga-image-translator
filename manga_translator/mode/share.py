@@ -84,6 +84,7 @@ class MangaShare:
     def check_lock(self):
         if not self.lock.acquire(blocking=True):
             raise HTTPException(status_code=429, detail="some Method is already being executed.")
+        print(f"acquired lock {id(self.lock)}")
 
     def get_fn(self, method_name: str):
         if method_name.startswith("__"):
@@ -104,20 +105,23 @@ class MangaShare:
 
         @app.post("/simple_execute/{method_name}")
         async def execute_method(request: Request, method_name: str = Path(...)):
+            print(f"ready execute {method_name}")
             self.check_nonce(request)
             self.check_lock()
-            method = self.get_fn(method_name)
-            attr = await load_data(request, method)
             try:
+                method = self.get_fn(method_name)
+                attr = await load_data(request, method)
                 if asyncio.iscoroutinefunction(method):
                     result = await method(**attr)
                 else:
                     result = method(**attr)
                 self.lock.release()
+                print(f"released lock {id(self.lock)}")
                 result_bytes = pickle.dumps(result)
                 return Response(content=result_bytes, media_type="application/octet-stream")
             except Exception as e:
                 self.lock.release()
+                print(f"released lock {id(self.lock)}")
                 raise HTTPException(status_code=500, detail=str(e))
 
         @app.post("/execute/{method_name}")

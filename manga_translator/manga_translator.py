@@ -297,12 +297,22 @@ class MangaTranslator:
             bboxes = visualize_textblocks(cv2.cvtColor(ctx.img_rgb, cv2.COLOR_BGR2RGB), ctx.text_regions)
             cv2.imwrite(self._result_path('bboxes.png'), bboxes)
         
+        del_keys = ['textlines', 'input', 'img_colorized', 'upscaled', 'img_rgb', 'img_alpha']
+        for key in del_keys:
+            del ctx[key]
+
         return ctx
 
-    async def translate_ctx(self, config: Config, ctx: Context) -> Context:
+    async def translate_ctx(self, image: Image, config: Config, ctx: Context) -> Context:
+        ctx.input = image
+
         # preload and download models (not strictly necessary, remove to lazy load)
         if ( self.models_ttl == 0 ):
             logger.info('Loading models')
+            if config.upscale.upscale_ratio:
+                await prepare_upscaling(config.upscale.upscaler)
+            await prepare_detection(config.detector.detector)
+            await prepare_ocr(config.ocr.ocr, self.device)
             await prepare_inpainting(config.inpainter.inpainter, self.device)
             await prepare_translation(config.translator.translator_gen)
             if config.colorizer.colorizer != Colorizer.none:
@@ -312,6 +322,23 @@ class MangaTranslator:
         return await self._translate_ctx(config, ctx)
 
     async def _translate_ctx(self, config: Config, ctx: Context) -> Context:
+        if config.colorizer.colorizer != Colorizer.none:
+            await self._report_progress('colorizing')
+            ctx.img_colorized = await self._run_colorizer(config, ctx)
+        else:
+            ctx.img_colorized = ctx.input
+
+        # -- Upscaling
+        # The default text detector doesn't work very well on smaller images, might want to
+        # consider adding automatic upscaling on certain kinds of small images.
+        if config.upscale.upscale_ratio:
+            await self._report_progress('upscaling')
+            ctx.upscaled = await self._run_upscaling(config, ctx)
+        else:
+            ctx.upscaled = ctx.img_colorized
+
+        ctx.img_rgb, ctx.img_alpha = load_image(ctx.upscaled)
+
         # -- Translation
         if ctx.text_regions is None:
             ctx.text_regions = []
