@@ -38,7 +38,7 @@ class MangaShare:
         # each chunk has a structure like this status_code(int/1byte),len(int/4bytes),bytechunk
         # status codes are 0 for result, 1 for progress report, 2 for error
         self.progress_queue = asyncio.Queue()
-        self.lock = Lock()
+        self.lock = asyncio.Lock()
 
         async def hook(state: str, finished: bool):
             state_data = state.encode("utf-8")
@@ -81,10 +81,8 @@ class MangaShare:
             if nonce != self.nonce:
                 raise HTTPException(401, detail="Nonce does not match")
 
-    def check_lock(self):
-        if not self.lock.acquire(blocking=True):
-            raise HTTPException(status_code=429, detail="some Method is already being executed.")
-        print(f"acquired lock {id(self.lock)}")
+    async def check_lock(self):
+        await self.lock.acquire()
 
     def get_fn(self, method_name: str):
         if method_name.startswith("__"):
@@ -107,7 +105,7 @@ class MangaShare:
         async def execute_method(request: Request, method_name: str = Path(...)):
             print(f"ready execute {method_name}")
             self.check_nonce(request)
-            self.check_lock()
+            await self.check_lock()
             try:
                 method = self.get_fn(method_name)
                 attr = await load_data(request, method)
@@ -127,7 +125,7 @@ class MangaShare:
         @app.post("/execute/{method_name}")
         async def execute_method(request: Request, method_name: str = Path(...)):
             self.check_nonce(request)
-            self.check_lock()
+            await self.check_lock()
             method = self.get_fn(method_name)
             attr = await load_data(request, method)
 

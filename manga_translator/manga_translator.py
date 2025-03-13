@@ -301,6 +301,8 @@ class MangaTranslator:
         for key in del_keys:
             del ctx[key]
 
+        torch.cuda.empty_cache()
+
         return ctx
 
     async def translate_ctx(self, image: Image, config: Config, ctx: Context) -> Context:
@@ -322,6 +324,10 @@ class MangaTranslator:
         return await self._translate_ctx(config, ctx)
 
     async def _translate_ctx(self, config: Config, ctx: Context) -> Context:
+        # Start the background cleanup job once if not already started.
+        if self._detector_cleanup_task is None:
+            self._detector_cleanup_task = asyncio.create_task(self._detector_cleanup_job())
+
         if config.colorizer.colorizer != Colorizer.none:
             await self._report_progress('colorizing')
             ctx.img_colorized = await self._run_colorizer(config, ctx)
@@ -389,6 +395,7 @@ class MangaTranslator:
                 for i, region_img in enumerate(ctx.result):
                     if isinstance(region_img['image'], np.ndarray):
                         cv2.imwrite(self._result_path(f'region_{i}.png'), cv2.cvtColor(region_img['image'], cv2.COLOR_RGB2BGR))
+            torch.cuda.empty_cache()
 
             return ctx
 
