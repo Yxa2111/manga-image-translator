@@ -1,0 +1,5 @@
+:5004 {
+    reverse_proxy http://manga-translator:5004 {
+        lb_policy least_conn 
+    }
+}

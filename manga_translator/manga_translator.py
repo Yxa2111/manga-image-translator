@@ -254,8 +254,13 @@ class MangaTranslator:
         if not ctx.textlines:
             await self._report_progress('skip-no-regions', True)
             # If no text was found result is intermediate image product
-            ctx.result = ctx.upscaled
-            return await self._revert_upscale(config, ctx)
+            # ctx.result = ctx.upscaled
+            del_keys = ['textlines', 'input', 'img_colorized', 'upscaled', 'img_rgb', 'img_alpha']
+            for key in del_keys:
+                del ctx[key]
+            ctx.text_regions = []
+            return ctx
+            # return await self._revert_upscale(config, ctx)
 
         if self.verbose:
             img_bbox_raw = np.copy(ctx.img_rgb)
@@ -270,8 +275,12 @@ class MangaTranslator:
         if not ctx.textlines:
             await self._report_progress('skip-no-text', True)
             # If no text was found result is intermediate image product
-            ctx.result = ctx.upscaled
-            return await self._revert_upscale(config, ctx)
+            del_keys = ['textlines', 'input', 'img_colorized', 'upscaled', 'img_rgb', 'img_alpha']
+            for key in del_keys:
+                del ctx[key]
+            ctx.text_regions = []
+            return ctx
+            #return await self._revert_upscale(config, ctx)
 
         # Apply pre-dictionary after OCR
         pre_dict = load_dictionary(self.pre_dict)
@@ -301,11 +310,37 @@ class MangaTranslator:
         for key in del_keys:
             del ctx[key]
 
-        torch.cuda.empty_cache()
+        #torch.cuda.empty_cache()
 
         return ctx
 
-    async def translate_ctx(self, image: Image, config: Config, ctx: Context) -> Context:
+    async def translate_ctx(self, config: Config, ctx: Context) -> Context:
+        # preload and download models (not strictly necessary, remove to lazy load)
+        if ( self.models_ttl == 0 ):
+            logger.info('Loading models')
+            # if config.upscale.upscale_ratio:
+            #     await prepare_upscaling(config.upscale.upscaler)
+            # await prepare_detection(config.detector.detector)
+            # await prepare_ocr(config.ocr.ocr, self.device)
+            # await prepare_inpainting(config.inpainter.inpainter, self.device)
+            await prepare_translation(config.translator.translator_gen)
+            # if config.colorizer.colorizer != Colorizer.none:
+            #     await prepare_colorization(config.colorizer.colorizer)
+
+        # Start the background cleanup job once if not already started.
+        if self._detector_cleanup_task is None:
+            self._detector_cleanup_task = asyncio.create_task(self._detector_cleanup_job())
+
+        # -- Translation
+        if ctx.text_regions is None:
+            ctx.text_regions = []
+        await self._report_progress('translating')
+        ctx.text_regions = await self._run_text_translation(config, ctx)
+        await self._report_progress('after-translating')
+        return ctx
+
+
+    async def inpaint_render(self, image: Image, config: Config, ctx: Context) -> Context:
         ctx.input = image
 
         # preload and download models (not strictly necessary, remove to lazy load)
@@ -316,14 +351,10 @@ class MangaTranslator:
             await prepare_detection(config.detector.detector)
             await prepare_ocr(config.ocr.ocr, self.device)
             await prepare_inpainting(config.inpainter.inpainter, self.device)
-            await prepare_translation(config.translator.translator_gen)
+            # await prepare_translation(config.translator.translator_gen)
             if config.colorizer.colorizer != Colorizer.none:
                 await prepare_colorization(config.colorizer.colorizer)
 
-        # translate
-        return await self._translate_ctx(config, ctx)
-
-    async def _translate_ctx(self, config: Config, ctx: Context) -> Context:
         # Start the background cleanup job once if not already started.
         if self._detector_cleanup_task is None:
             self._detector_cleanup_task = asyncio.create_task(self._detector_cleanup_job())
@@ -346,15 +377,17 @@ class MangaTranslator:
         ctx.img_rgb, ctx.img_alpha = load_image(ctx.upscaled)
 
         # -- Translation
-        if ctx.text_regions is None:
-            ctx.text_regions = []
-        await self._report_progress('translating')
-        ctx.text_regions = await self._run_text_translation(config, ctx)
-        await self._report_progress('after-translating')
+        if ctx.text_regions is None or len(ctx.text_regions) == 0:
+            logger.info(f"empty regions, skip")
+            ctx.result = ctx.input
+            return ctx
+        # await self._report_progress('translating')
+        # ctx.text_regions = await self._run_text_translation(config, ctx)
+        # await self._report_progress('after-translating')
 
-        if not ctx.text_regions:
-            await self._report_progress('error-translating', True)
-            ctx.result = ctx.upscaled
+        # if not ctx.text_regions:
+        #     await self._report_progress('error-translating', True)
+        #     ctx.result = ctx.upscaled
             return await self._revert_upscale(config, ctx)
         elif ctx.text_regions == 'cancel':
             await self._report_progress('cancelled', True)
@@ -382,7 +415,10 @@ class MangaTranslator:
             cv2.imwrite(self._result_path('inpainted.png'), cv2.cvtColor(ctx.img_inpainted, cv2.COLOR_RGB2BGR))
         # -- Rendering
         await self._report_progress('rendering')
-        ctx.img_rendered = await self._run_text_rendering(config, ctx)
+        try:
+            ctx.img_rendered = await self._run_text_rendering(config, ctx)
+        except Exception as e:
+            raise
         await self._report_progress('finished', True)
         
         if config.render.return_region_only is False:
@@ -395,7 +431,7 @@ class MangaTranslator:
                 for i, region_img in enumerate(ctx.result):
                     if isinstance(region_img['image'], np.ndarray):
                         cv2.imwrite(self._result_path(f'region_{i}.png'), cv2.cvtColor(region_img['image'], cv2.COLOR_RGB2BGR))
-            torch.cuda.empty_cache()
+            #torch.cuda.empty_cache()
 
             return ctx
 

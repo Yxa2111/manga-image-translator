@@ -45,3 +45,4 @@ MANIFEST
 # Input and Output
 /input/
 /input-translated/
+docker-compose.yaml
